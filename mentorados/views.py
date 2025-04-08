@@ -144,7 +144,7 @@ def agendar_reuniao(request):
                 )
                 return render(request, 'agendar_reuniao.html', {'horarios': horarios, 'tags': Reuniao.tag_choices})
         
-        # Caso 'data' não seja fornecida
+     
         return render(request, 'agendar_reuniao.html', {'horarios': [], 'tags': Reuniao.tag_choices})
     
     elif request.method == 'POST':
@@ -171,9 +171,9 @@ def agendar_reuniao(request):
                 messages.add_message(request, constants.ERROR, 'Horário não disponível.')
                 return redirect('agendar_reuniao')
         
-        # Caso algum campo esteja vazio
+      
         messages.add_message(request, constants.ERROR, 'Todos os campos são obrigatórios.')
         return redirect('agendar_reuniao')
     
-    # Caso o método HTTP não seja GET ou POST
+ 
     return redirect('escolher_dia')
