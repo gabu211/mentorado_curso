@@ -1,9 +1,12 @@
 from django.shortcuts import render, redirect
 from django.http import HttpResponse, request
-from .models import Mentorados, Navigators, User, DisponibilidadeHorarios
+from .models import Mentorados, Navigators, User, DisponibilidadeHorarios, Reuniao
 from django.contrib import messages
 from django.contrib.messages import constants
 from datetime import datetime, timedelta
+from.auth import valida_token
+from django.utils import timezone
+from django.utils.timezone import make_aware, localtime
 
 def mentorados(request):
     if not request.user.is_authenticated:
@@ -90,4 +93,87 @@ def auth(request):
  elif request.method == 'POST':
      token= request.POST.get('token')
 
-     mentorado = Mentorados.objects.filter(token=token)
+     if not Mentorados.objects.filter(token=token).exists():
+      messages.add_message(request, constants.ERROR, 'Token inválido')
+      return redirect('auth_mentorado')
+     
+     response = redirect('escolher_dia')
+     response.set_cookie('auth_token', token, max_age=3600)
+
+     return response
+
+
+def escolher_dia(request):
+    mentorado = valida_token(request.COOKIES.get('auth_token'))
+    if not mentorado:
+        return redirect('auth_mentorado')
+
+    if request.method == 'GET':
+        hoje = datetime.now().date()  
+        disponibilidades = DisponibilidadeHorarios.objects.filter(
+            data_inicial__date__gte=hoje,
+            agendado=False,
+            mentor=mentorado.user
+        )
+        datas = [
+            {
+                'dia': data.data_inicial.strftime('%d'),
+                'mes': data.data_inicial.strftime('%B'),
+                'dia_semana': data.data_inicial.strftime('%A'),
+                'data_completa': data.data_inicial.strftime('%d-%m-%Y')
+            }
+            for data in disponibilidades
+        ]
+        return render(request, 'escolher_dia.html', {'horarios': datas})
+
+def agendar_reuniao(request):
+    if not valida_token(request.COOKIES.get('auth_token')):
+        return redirect('auth_mentorado')
+    
+    mentorado = valida_token(request.COOKIES.get('auth_token'))
+    
+    if request.method == 'GET':
+        data = request.GET.get('data')
+        if data:
+            data = datetime.strptime(data, '%d-%m-%Y')
+            if mentorado:
+                horarios = DisponibilidadeHorarios.objects.filter(
+                    data_inicial__date=data.date(),
+                    agendado=False,
+                    mentor=mentorado.user
+                )
+                return render(request, 'agendar_reuniao.html', {'horarios': horarios, 'tags': Reuniao.tag_choices})
+        
+        # Caso 'data' não seja fornecida
+        return render(request, 'agendar_reuniao.html', {'horarios': [], 'tags': Reuniao.tag_choices})
+    
+    elif request.method == 'POST':
+        horario_id = request.POST.get('horario')
+        tag = request.POST.get('tag')
+        descricao = request.POST.get('descricao')
+
+        if horario_id and tag and descricao:
+            try:
+                disponibilidade = DisponibilidadeHorarios.objects.get(id=horario_id, agendado=False)
+                disponibilidade.agendado = True
+                disponibilidade.save()
+
+                Reuniao.objects.create(
+                    data=disponibilidade,
+                    mentorado=valida_token(request.COOKIES.get('auth_token')),
+                    tag=tag,
+                    descricao=descricao
+                )
+
+                messages.add_message(request, constants.SUCCESS, 'Reunião agendada com sucesso!')
+                return redirect('escolher_dia')
+            except DisponibilidadeHorarios.DoesNotExist:
+                messages.add_message(request, constants.ERROR, 'Horário não disponível.')
+                return redirect('agendar_reuniao')
+        
+        # Caso algum campo esteja vazio
+        messages.add_message(request, constants.ERROR, 'Todos os campos são obrigatórios.')
+        return redirect('agendar_reuniao')
+    
+    # Caso o método HTTP não seja GET ou POST
+    return redirect('escolher_dia')

@@ -2,6 +2,7 @@ from django.db import models
 from django.contrib.auth.models import User
 from datetime import timedelta
 import secrets
+from django.utils.timezone import make_aware, timezone, now
 
 class Navigators(models.Model):
     nome = models.CharField(max_length=255)
@@ -42,8 +43,21 @@ class DisponibilidadeHorarios(models.Model):
     mentor = models.ForeignKey(User, on_delete=models.CASCADE)
     agendado = models.BooleanField(default=False)
 
+    @property
     def data_final(self):
         return self.data_inicial + timedelta(minutes=50)
 
     def __str__(self):
         return f"Disponibilidade de {self.mentor} em {self.data_inicial}"
+
+class Reuniao(models.Model):
+    tag_choices = (
+        ('G', 'Gestão'),
+        ('M', 'Marketing'),
+        ('RH', 'Gestão de pessoas'),
+        ('I', 'Impostos')
+    )
+    data = models.ForeignKey(DisponibilidadeHorarios, on_delete=models.CASCADE)
+    mentorado = models.ForeignKey(Mentorados, on_delete=models.CASCADE)
+    tag = models.CharField(max_length=2, choices=tag_choices)
+    descricao = models.TextField()
